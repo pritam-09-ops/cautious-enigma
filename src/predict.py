@@ -1,15 +1,3 @@
-"""
-24-Hour GHI Forecasting Module
-
-Provides:
-- 24-hour ahead GHI predictions
-- Confidence interval estimation
-- Optimal dispatch scheduling
-- Grid stability assessment
-
-Research Project: IIT Bombay (December 2025 - February 2026)
-"""
-
 import numpy as np
 import torch
 import pandas as pd
