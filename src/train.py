@@ -1,17 +1,3 @@
-"""
-Data Loading & Training Script for CNN-LSTM Solar Prediction Model
-
-Pipeline:
-1. Load CSV data (timestamp + ghi columns)
-2. Handle missing values with linear interpolation
-3. Feature engineering
-4. Train/test split
-5. Train CNN-LSTM for 50 epochs
-6. Evaluate with RMSE, MAE, R², MAPE
-7. Save trained model weights
-
-Research Project: IIT Bombay (December 2025 - February 2026)
-"""
 
 import os
 import numpy as np
