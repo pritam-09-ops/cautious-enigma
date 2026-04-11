@@ -1,15 +1,3 @@
-"""
-Feature Engineering for Solar Irradiance Prediction
-
-Features computed:
-- Clearness Index (Kt): GHI / Extraterrestrial Radiation
-- Solar Zenith Angle: Sun position relative to observer
-- Rolling Statistics: Moving averages and standard deviations
-- Time-based Features: Hour, day of year, month
-
-Research Project: IIT Bombay (December 2025 - February 2026)
-"""
-
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
