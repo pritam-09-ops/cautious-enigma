@@ -1,16 +1,3 @@
-"""
-Duck Curve Analysis & Grid Stability Assessment
-
-Analyzes daily solar generation profiles to:
-- Identify morning/evening ramp rates
-- Detect peak generation periods
-- Generate predictive curtailment strategies
-- Detect high ramp events
-- Calculate stability scoring
-
-Research Project: IIT Bombay (December 2025 - February 2026)
-"""
-
 import numpy as np
 import pandas as pd
 
