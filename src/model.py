@@ -1,14 +1,3 @@
-"""
-CNN-LSTM Hybrid Model for Solar Irradiance Prediction
-
-Architecture:
-- 1D CNN layers for local pattern extraction
-- LSTM layers for temporal dependency modeling
-- Fully connected output layer
-
-Research Project: IIT Bombay (December 2025 - February 2026)
-"""
-
 import torch
 import torch.nn as nn
 
