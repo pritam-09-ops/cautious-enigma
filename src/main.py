@@ -1,21 +1,3 @@
-"""
-Solar Irradiance & PV Power Prediction - Main Entry Point
-
-This script orchestrates the entire pipeline:
-1. Data loading and preprocessing
-2. Feature engineering (Clearness Index, Solar Zenith Angle)
-3. Model training with CNN-LSTM
-4. Evaluation and accuracy metrics
-5. Duck Curve analysis and curtailment strategy generation
-6. 24-hour forecasting
-
-Research Project: IIT Bombay (December 2025 - February 2026)
-Model Accuracy: ~94.5%
-
-Usage:
-    python src/main.py
-    python src/main.py --data path/to/your/data.csv
-"""
 
 import os
 import sys
