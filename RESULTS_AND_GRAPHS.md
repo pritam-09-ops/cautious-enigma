@@ -1,4 +1,4 @@
-# Solar Irradiance & PV Power Prediction - Results & Graphs
+# Solar Irradiance & PV Power Prediction - Results 
 
 ## Executive Summary
 - **Model Accuracy**: 94.5%
