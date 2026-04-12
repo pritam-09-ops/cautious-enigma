@@ -1,6 +1,22 @@
 # Solar Irradiance & PV Power Prediction - Results 
 
+## 📷 How to View / Generate Graphs
+
+This document includes image references that point to files in the `images/` directory. To populate those images:
+
+1. **Generate graphs from code** – Run the analysis scripts (e.g. `python src/duck_curve_analysis.py --save images/`) to produce plots and save them into the `images/` folder.
+2. **Add existing images manually** – Copy your PNG/JPG files into the `images/` directory using the filenames referenced below.
+3. **Commit and push** – After adding images, run `git add images/ && git commit -m "Add result graphs" && git push` so that the visuals appear in the GitHub preview.
+
+> **Supported formats:** PNG, JPG, GIF, SVG  
+> **Recommended size:** 800 × 500 px or larger for clarity
+
+---
+
 ## Executive Summary
+
+![Bar chart showing CNN-LSTM model achieving 94.5% accuracy with RMSE of 0.0245 MJ/m² and R² Score of 0.945](images/executive_summary_overview.png)
+
 - **Model Accuracy**: 94.5%
 - **RMSE**: 0.0245 MJ/m²
 - **MAE**: 0.0182 MJ/m²
@@ -11,6 +27,8 @@
 ---
 
 ## 1. Model Performance Metrics
+
+![Bar chart comparing CNN-LSTM accuracy (94.5%) against baseline models LSTM (89.2%), CNN (87.6%), XGBoost (91.3%), and Random Forest (88.7%)](images/model_accuracy_comparison.png)
 
 ### Overall Performance
 | Metric | Value | Status |
@@ -36,6 +54,9 @@
 ## 2. Prediction Accuracy Analysis
 
 ### 24-Hour Forecast Accuracy
+
+![24-hour forecast accuracy line chart showing 96.2% accuracy in hours 1-6, declining to 93.4% during peak hours 13-18, then recovering to 95.1% in hours 19-24](images/forecast_accuracy_24h.png)
+
 ```
 Hour 1-6:   96.2% accuracy (early morning stable period)
 Hour 7-12:  94.8% accuracy (morning ramp period)
@@ -44,6 +65,9 @@ Hour 19-24: 95.1% accuracy (evening decline period)
 ```
 
 ### Prediction Error Distribution
+
+![Histogram showing prediction error distribution with 68.4% of errors within ±2% range, 26.3% within ±2-5%, and only 1.7% exceeding ±10%](images/prediction_error_distribution.png)
+
 ```
 Error Range | Frequency | Percentage
 ±0-2%      | 1,847     | 68.4%
@@ -55,6 +79,8 @@ Error Range | Frequency | Percentage
 ---
 
 ## 3. Duck Curve Analysis
+
+![Duck curve chart showing morning ramp from 6-11 AM at 4.2 MW/min (0% to 87% capacity) and evening ramp from 4-7 PM at -3.8 MW/min (72% to 8% capacity)](images/duck_curve_ramp.png)
 
 ### Morning Ramp (6:00 AM - 11:00 AM)
 - **Average Ramp Rate**: 4.2 MW/min
@@ -76,6 +102,9 @@ Error Range | Frequency | Percentage
 - **Cloud Cover Impact**: Moderate
 
 ### Daily Generation Profile
+
+![Line chart comparing actual vs forecasted solar generation from 6 AM to 9 PM, peaking at 84% capacity midday with forecast errors consistently within ±0.3%](images/daily_generation_profile.png)
+
 ```
 Time Period | Avg Generation | Forecast | Error
 6:00-9:00   | 15% capacity   | 14.8%   | -0.2%
@@ -88,6 +117,8 @@ Time Period | Avg Generation | Forecast | Error
 ---
 
 ## 4. Feature Impact Analysis
+
+![Heatmap showing feature correlations with Clearness Index (Kt) at 0.982, Solar Zenith Angle at 0.956, Temperature at 0.642, Humidity at -0.578, and AOD at -0.695](images/feature_correlation_heatmap.png)
 
 ### Clearness Index (Kt) Impact
 - **Correlation with GHI**: 0.982
@@ -117,9 +148,13 @@ Time Period | Avg Generation | Forecast | Error
 - **Scattering Effect**: 8-15% reduction
 - **Prediction Weight**: 5.8%
 
+![Horizontal bar chart of feature importance: Clearness Index (34.2%), Solar Zenith Angle (28.7%), Temperature (18.5%), Humidity (12.8%), and AOD (5.8%)](images/feature_importance_bar.png)
+
 ---
 
 ## 5. CNN-LSTM Architecture Performance
+
+![Neural network architecture diagram showing Conv1D layers feeding into two LSTM layers followed by Dense and Dropout layers, with 151,609 total trainable parameters](images/cnn_lstm_architecture.png)
 
 ### Model Layers
 | Layer | Type | Parameters | Output Shape |
@@ -139,6 +174,9 @@ Time Period | Avg Generation | Forecast | Error
 - **Non-trainable**: 0
 
 ### Training Metrics
+
+![Dual-axis line chart showing training and validation loss decreasing from 0.0892 to 0.0124 over 15 epochs, with accuracy improving from 88.2% to 94.5%](images/training_loss_accuracy_curves.png)
+
 | Epoch | Loss | Val Loss | Accuracy | Val Accuracy |
 |-------|------|----------|----------|--------------| 
 | 1 | 0.0892 | 0.0856 | 88.2% | 88.5% |
@@ -177,6 +215,8 @@ Stability Score Range | Category | Action Required
 
 ## 7. Grid Integration Benefits
 
+![Bar chart showing grid stability improvements: 45.2% reduction in frequency deviation, 28.3% improvement in voltage stability, 91.5% load balancing efficiency, and 94.1% demand-supply matching](images/grid_system_stability.png)
+
 ### System Stability Metrics
 - **Frequency Deviation Prevention**: -45.2%
 - **Voltage Stability Improvement**: +28.3%
@@ -184,6 +224,9 @@ Stability Score Range | Category | Action Required
 - **Demand-Supply Matching**: 94.1%
 
 ### Economic Impact
+
+![Stacked bar chart showing annual economic benefits: $287,500 in cost savings, $156,300 in forecasting revenue, $85,200 in avoided curtailment losses, and $46,000 in grid penalty reductions](images/grid_economic_impact.png)
+
 - **Cost Savings (Annual)**: $287,500
 - **Revenue from Accurate Forecasting**: $156,300
 - **Avoided Curtailment Losses**: $85,200
@@ -192,6 +235,8 @@ Stability Score Range | Category | Action Required
 ---
 
 ## 8. Validation Results
+
+![5-fold cross-validation bar chart showing consistent accuracy across folds ranging from 93.8% to 94.4% test accuracy, with mean test accuracy of 94.12%](images/cross_validation_performance.png)
 
 ### Cross-Validation Performance (5-Fold)
 | Fold | Training Acc | Validation Acc | Test Acc |
@@ -210,6 +255,8 @@ Stability Score Range | Category | Action Required
 ---
 
 ## 9. Comparison with Baseline Models
+
+![Grouped bar chart comparing Hybrid CNN-LSTM (94.5% accuracy, RMSE 0.0245) against LSTM (89.2%), CNN (87.6%), XGBoost (91.3%), and Random Forest (88.7%) across accuracy, RMSE, and MAE metrics](images/model_comparison_bar_charts.png)
 
 ### Model Performance Comparison
 | Model | Accuracy | RMSE | MAE | Training Time |
