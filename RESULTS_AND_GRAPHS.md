@@ -1,18 +1,4 @@
 # Solar Irradiance & PV Power Prediction - Results 
-
-## 📷 How to View / Generate Graphs
-
-This document includes image references that point to files in the `images/` directory. To populate those images:
-
-1. **Generate graphs from code** – Run the analysis scripts (e.g. `python src/duck_curve_analysis.py --save images/`) to produce plots and save them into the `images/` folder.
-2. **Add existing images manually** – Copy your PNG/JPG files into the `images/` directory using the filenames referenced below.
-3. **Commit and push** – After adding images, run `git add images/ && git commit -m "Add result graphs" && git push` so that the visuals appear in the GitHub preview.
-
-> **Supported formats:** PNG, JPG, GIF, SVG  
-> **Recommended size:** 800 × 500 px or larger for clarity
-
----
-
 ## Executive Summary
 
 ![Bar chart showing CNN-LSTM model achieving 94.5% accuracy with RMSE of 0.0245 MJ/m² and R² Score of 0.945](images/executive_summary_overview.png)
