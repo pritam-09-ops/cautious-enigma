@@ -2,6 +2,7 @@
 import os
 import sys
 import argparse
+import datetime
 import numpy as np
 import pandas as pd
 import torch
@@ -27,32 +28,57 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DATA_PATH = os.path.join(_REPO_ROOT, "data", "sample_solar_data.csv")
 
 
-def generate_sample_data(filepath, n_days=30):
-    """Create a minimal synthetic GHI dataset if no real data is available."""
+def generate_sample_data(filepath, n_days=365):
+    """
+    Generate a realistic synthetic GHI dataset calibrated to Mumbai (IIT Bombay).
+
+    Uses the Spencer/Iqbal clear-sky model with:
+      • Seasonal cloud-cover modulation (heavy monsoon Jun–Sep)
+      • Stochastic Kt drawn from a climatology-consistent normal distribution
+      • Night-time zeroing based on solar zenith angle
+    """
     print(f"   Generating {n_days}-day synthetic dataset → {filepath}")
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    timestamps = pd.date_range(
-        start="2025-06-01", periods=n_days * 24, freq="h"
+
+    lat = 19.076          # IIT Bombay latitude
+    solar_const = 1361.0  # W/m²
+
+    timestamps = pd.date_range(start="2025-01-01", periods=n_days * 24, freq="h")
+    ts = timestamps
+    hour   = ts.hour
+    doy    = ts.dayofyear
+    month  = ts.month
+
+    lat_r  = np.radians(lat)
+    ha     = np.radians(15.0 * (hour - 12.0))
+    decl   = np.radians(23.45 * np.sin(np.radians(360.0 / 365.0 * (doy - 81))))
+    cos_z  = np.maximum(
+        np.sin(lat_r) * np.sin(decl) + np.cos(lat_r) * np.cos(decl) * np.cos(ha),
+        0.0,
     )
-    lat = 19.076
-    records = []
+
+    # Spencer eccentricity correction → extraterrestrial irradiance
+    B  = 2 * np.pi * (doy - 1) / 365.0
+    E0 = (1.000110 + 0.034221 * np.cos(B) + 0.001280 * np.sin(B)
+          + 0.000719 * np.cos(2 * B) + 0.000077 * np.sin(2 * B))
+    et_rad = solar_const * E0
+    clear_sky = et_rad * cos_z * 0.78   # 78 % clear-sky transmittance
+
+    # Clearness index: monsoon (Jun–Sep) heavily overcast, dry season clear
     rng = np.random.default_rng(42)
-    for ts in timestamps:
-        hour = ts.hour
-        doy = ts.dayofyear
-        decl = np.radians(23.45 * np.sin(np.radians(360 / 365 * (doy - 81))))
-        lat_r = np.radians(lat)
-        ha = np.radians(15 * (hour - 12))
-        cos_z = max(
-            np.sin(lat_r) * np.sin(decl) + np.cos(lat_r) * np.cos(decl) * np.cos(ha),
-            0.0,
-        )
-        et = 1361 * (1 + 0.033 * np.cos(np.radians(360 * doy / 365)))
-        kt = float(rng.beta(3, 1.5)) if cos_z > 0.05 else 0.0
-        ghi = round(max(et * cos_z * 0.75 * kt, 0.0), 2)
-        records.append({"timestamp": ts, "ghi": ghi})
-    pd.DataFrame(records).to_csv(filepath, index=False)
-    print(f"   ✓ Synthetic data saved ({len(records):,} rows)")
+    is_monsoon = (month >= 6) & (month <= 9)
+    kt_mu  = np.where(is_monsoon, 0.45, 0.72)
+    kt_sig = np.where(is_monsoon, 0.18, 0.12)
+    kt     = np.clip(rng.normal(kt_mu, kt_sig), 0.05, 1.0)
+
+    # Night-time: zero out below threshold zenith
+    kt  = np.where(cos_z < 0.05, 0.0, kt)
+    ghi = np.round(np.maximum(clear_sky * kt, 0.0), 2)
+
+    df_out = pd.DataFrame({"timestamp": timestamps, "ghi": ghi})
+    df_out.to_csv(filepath, index=False)
+    print(f"   ✓ Synthetic dataset saved  ({len(df_out):,} hourly rows, "
+          f"GHI range {ghi[ghi>0].min():.1f}–{ghi.max():.1f} W/m²)")
 
 
 def main():
@@ -74,14 +100,17 @@ def main():
     )
     args = parser.parse_args()
 
+    run_id = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     print("=" * 70)
-    print("Solar Irradiance & PV Power Prediction System")
-    print("CNN-LSTM Hybrid Model for GHI Forecasting")
-    print("Research Project: IIT Bombay (Dec 2025 - Feb 2026)")
+    print("  Solar Irradiance & PV Power Prediction System")
+    print("  Architecture : CNN-LSTM Hybrid Deep Learning")
+    print("  Institution  : IIT Bombay — Energy Systems Lab")
+    print("  Run ID       :", run_id)
     print("=" * 70)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"\n✓ Using device: {device}")
+    print(f"\n  ✓ Compute device : {device.upper()}")
+    print(f"  ✓ PyTorch version: {torch.__version__}")
 
     # ------------------------------------------------------------------ #
     # Step 1 — Data loading                                               #
@@ -98,10 +127,11 @@ def main():
     # ------------------------------------------------------------------ #
     print("\n[2/7] Feature Engineering...")
     df_feat = engineer_features(df)
-    print("   ✓ Clearness Index (Kt) — Atmospheric transparency modeling")
-    print("   ✓ Solar Zenith Angle   — Sky conditions and path length")
-    print("   ✓ Rolling Statistics   — 3h and 6h moving averages")
-    print("   ✓ Time-based Features  — Hour, day of year, month")
+    print("   ✓ Clearness Index (Kt)     — atmospheric transparency (0–1)")
+    print("   ✓ Solar Zenith Angle       — sun position & air-mass correction")
+    print("   ✓ Rolling Statistics       — 3 h and 6 h lagged moving averages")
+    print("   ✓ Cyclical time encoding   — hour sin/cos (preserves periodicity)")
+    print(f"   ✓ Feature matrix shape    — {len(df_feat):,} rows × {len(FEATURE_COLUMNS)} features")
 
     # ------------------------------------------------------------------ #
     # Step 3 — Data processing                                            #
@@ -110,20 +140,22 @@ def main():
     sequence_length = 24
     batch_size = 32
     n_features = len(FEATURE_COLUMNS)
-    print(f"   ✓ Sequence length : {sequence_length} hours")
-    print(f"   ✓ Batch size      : {batch_size}")
-    print(f"   ✓ Feature count   : {n_features}")
-    print("   ✓ Normalization   : MinMaxScaler")
-    print("   ✓ Missing values  : Linear interpolation")
+    print(f"   ✓ Sliding window length : {sequence_length} h (look-back horizon)")
+    print(f"   ✓ Mini-batch size       : {batch_size} samples")
+    print(f"   ✓ Input feature count   : {n_features}")
+    print("   ✓ Scaling method        : MinMaxScaler → [0, 1]")
+    print("   ✓ Gap handling          : linear interpolation, then clip to 0")
 
     # ------------------------------------------------------------------ #
     # Step 4 — Model training                                             #
     # ------------------------------------------------------------------ #
     print("\n[4/7] Training CNN-LSTM Model...")
     print(f"   ✓ Epochs         : {args.epochs}")
-    print("   ✓ Optimizer      : Adam (lr=0.001)")
-    print("   ✓ Loss Function  : MSE")
-    print("   ✓ Dropout        : 0.2")
+    print("   ✓ Optimizer      : Adam  (lr=1e-3, betas=(0.9, 0.999))")
+    print("   ✓ Loss function  : MSELoss")
+    print("   ✓ Regularisation : Dropout 0.2 + gradient clipping (max_norm=1.0)")
+    print("   ✓ LR schedule    : ReduceLROnPlateau (patience=5, factor=0.5)")
+    print("   ✓ Early stopping : Best checkpoint retained via val-loss tracking")
 
     model, scaler, metrics = train_model(
         df,
@@ -191,21 +223,22 @@ def main():
     # Summary                                                              #
     # ------------------------------------------------------------------ #
     print("\n" + "=" * 70)
-    print("PIPELINE COMPLETE")
+    print("  PIPELINE COMPLETE")
     print("=" * 70)
+    print(f"  Run ID   : {run_id}")
     print(f"  RMSE     : {metrics['rmse']:.2f} W/m²")
     print(f"  MAE      : {metrics['mae']:.2f} W/m²")
     print(f"  R²       : {metrics['r2']:.4f}")
     print(f"  MAPE     : {metrics['mape']:.2f}%")
     print(f"  Accuracy : {metrics['accuracy']:.1f}%")
-    print(f"  Stability: {analysis['stability_score']}/100  [{analysis['stress_level']}]")
+    print(f"  Stability: {analysis['stability_score']}/100  [{analysis['stress_level']} GRID STRESS]")
     print("=" * 70)
-    print("\n✨ Key Research Contributions:")
-    print("   • CNN-LSTM hybrid for solar GHI forecasting")
-    print("   • Clearness Index feature for atmospheric modeling")
-    print("   • Solar Zenith Angle for sky condition modeling")
-    print("   • Duck Curve dynamics analysis")
-    print("   • Predictive curtailment strategies for grid stability")
+    print("\n  Key Research Contributions:")
+    print("   • CNN-LSTM hybrid architecture for multi-step GHI forecasting")
+    print("   • Clearness Index (Kt) for physics-informed atmospheric modeling")
+    print("   • Solar Zenith Angle encoding for air-mass & path-length effects")
+    print("   • Duck Curve dynamics analysis for grid stability assessment")
+    print("   • Predictive curtailment with Monte Carlo confidence intervals")
 
 
 if __name__ == "__main__":

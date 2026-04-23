@@ -137,7 +137,29 @@ except ImportError:
                     stability_score=s, stress_level=analysis["stress_level"])
 
     def print_duck_curve_summary(analysis, curtailment):
-        pass   # handled by our own report() below
+        W = 60
+        print("\n" + "=" * W)
+        print("  DUCK CURVE & GRID STABILITY SUMMARY")
+        print("=" * W)
+        print(f"  Morning ramp rate  : {analysis['morning_ramp_rate']:+.1f} MW/h")
+        print(f"  Evening ramp rate  : {analysis['evening_ramp_rate']:+.1f} MW/h")
+        print(f"  Peak generation    : {analysis['peak_generation']:.1f} W/m²"
+              f"  at {analysis['peak_hour']:02d}:00")
+        print(f"  Stability score    : {analysis['stability_score']}/100"
+              f"  [{analysis['stress_level']} STRESS]")
+        if analysis["high_ramp_events"]:
+            hrs = ", ".join(f"{h:02d}:00" for h in analysis["high_ramp_events"])
+            print(f"  High-ramp hours    : {hrs}")
+        else:
+            print("  High-ramp hours    : None detected ✓")
+        print(f"\n  Dispatch advisory  : {curtailment['dispatch_recommendation']}")
+        curtailed = [s for s in curtailment["curtailment_schedule"]
+                     if s["action"] != "NORMAL"]
+        if curtailed:
+            print(f"  Curtailment slots  : {len(curtailed)} h requiring REDUCE/CURTAIL action")
+        else:
+            print("  Curtailment slots  : None required ✓")
+        print("=" * W)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # CONSTANTS

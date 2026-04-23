@@ -133,23 +133,49 @@ def assess_grid_stability(forecast_result):
 
 
 def print_forecast_summary(forecast_result, schedule):
-    """Pretty-print the 24-hour forecast results."""
+    """Pretty-print the 24-hour operational forecast with grid advisories."""
     preds = forecast_result["predictions"]
     lower = forecast_result["lower_ci"]
     upper = forecast_result["upper_ci"]
 
-    print("\n" + "=" * 70)
-    print("24-HOUR GHI FORECAST")
-    print("=" * 70)
-    print(f"  {'Hour':>4} | {'GHI (W/m²)':>11} | {'95% CI':>20} | {'Dispatch':>8}")
-    print("  " + "-" * 56)
+    def _period(h):
+        if h < 6:   return "Night"
+        if h < 10:  return "Morning ramp"
+        if h < 15:  return "Midday peak"
+        if h < 19:  return "Afternoon"
+        if h < 22:  return "Evening ramp"
+        return "Night"
+
+    def _advisory(s):
+        if s["recommended_dispatch_pct"] == 100:
+            return "Full dispatch"
+        if s["recommended_dispatch_pct"] >= 90:
+            return "Slight derating"
+        return "Curtail — high uncertainty"
+
+    peak_val  = max(preds)
+    peak_hour = int(preds.index(peak_val)) if isinstance(preds, list) else int(
+        np.argmax(preds))
+    daily_kwh = sum(preds)
+
+    print("\n" + "=" * 78)
+    print("  24-HOUR GHI OPERATIONAL FORECAST")
+    print("=" * 78)
+    print(f"  {'Hr':>3} | {'Period':<15} | {'GHI W/m²':>10} | "
+          f"{'95% CI':>22} | {'Dispatch':>9} | Advisory")
+    print("  " + "-" * 72)
     for s in schedule:
-        h = s["hour"]
-        print(f"  {h:02d}:00 | {preds[h]:>9.1f}   | "
-              f"[{lower[h]:>7.1f}, {upper[h]:>7.1f}] | "
-              f"{s['recommended_dispatch_pct']:>6}%")
-    print("=" * 70)
-    print(f"  Peak forecast: {max(preds):.1f} W/m² at "
-          f"hour {int(np.argmax(preds)):02d}:00")
-    print(f"  Daily total  : {sum(preds):.0f} Wh/m²")
-    print("=" * 70)
+        h  = s["hour"]
+        ci = f"[{lower[h]:>7.1f}, {upper[h]:>7.1f}]"
+        print(f"  {h:02d}:00 | {_period(h):<15} | {preds[h]:>9.1f}   | "
+              f"{ci:>22} | {s['recommended_dispatch_pct']:>7}%  | {_advisory(s)}")
+    print("=" * 78)
+    print(f"  Peak forecast  : {peak_val:.1f} W/m²  at {peak_hour:02d}:00")
+    print(f"  Daily integral : {daily_kwh:.0f} Wh/m²  "
+          f"({daily_kwh / 1000:.2f} kWh/m²/day)")
+    low_conf = sum(1 for s in schedule if s["confidence"] == "LOW")
+    if low_conf:
+        print(f"  ⚠  Low-confidence windows: {low_conf} h — consider reserve dispatch")
+    else:
+        print("  ✓  All forecast windows meet HIGH or MEDIUM confidence threshold")
+    print("=" * 78)
