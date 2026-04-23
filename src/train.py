@@ -222,13 +222,35 @@ def evaluate_model(model, test_loader, scaler, device='cpu'):
 
 
 def print_metrics(metrics):
-    """Pretty-print evaluation metrics."""
-    print("\n" + "=" * 50)
-    print("MODEL EVALUATION METRICS")
-    print("=" * 50)
-    print(f"  RMSE     : {metrics['rmse']:.2f} W/m²")
-    print(f"  MAE      : {metrics['mae']:.2f} W/m²")
-    print(f"  R²       : {metrics['r2']:.4f}")
-    print(f"  MAPE     : {metrics['mape']:.2f}%")
-    print(f"  Accuracy : {metrics['accuracy']:.1f}%")
-    print("=" * 50)
+    """Pretty-print evaluation metrics with interpretation."""
+    rmse = metrics['rmse']
+    mae  = metrics['mae']
+    r2   = metrics['r2']
+    mape = metrics['mape']
+    acc  = metrics['accuracy']
+
+    # Qualitative rating bands (literature benchmarks for GHI forecasting)
+    def rmse_rating(v):
+        return "Excellent" if v < 40 else ("Good" if v < 80 else ("Acceptable" if v < 130 else "Needs improvement"))
+
+    def r2_rating(v):
+        return "Excellent" if v > 0.95 else ("Good" if v > 0.90 else ("Acceptable" if v > 0.80 else "Needs improvement"))
+
+    def mape_rating(v):
+        return "Excellent" if v < 5 else ("Good" if v < 10 else ("Acceptable" if v < 20 else "Needs improvement"))
+
+    print("\n" + "=" * 60)
+    print("  MODEL EVALUATION — TEST SET PERFORMANCE")
+    print("=" * 60)
+    print(f"  {'Metric':<22} {'Value':>12}   {'Rating'}")
+    print("  " + "-" * 54)
+    print(f"  {'RMSE':<22} {rmse:>10.2f}   W/m²  →  {rmse_rating(rmse)}")
+    print(f"  {'MAE':<22} {mae:>10.2f}   W/m²  →  (mean abs error)")
+    print(f"  {'R²  (coeff. of det.)':<22} {r2:>12.4f}   {r2_rating(r2)}")
+    print(f"  {'MAPE':<22} {mape:>10.2f}   %     →  {mape_rating(mape)}")
+    print(f"  {'Accuracy (1−MAE/μ)':<22} {acc:>10.1f}   %")
+    print("=" * 60)
+    print("  Benchmark: state-of-the-art CNN-LSTM models for")
+    print("  hourly GHI forecasting typically achieve RMSE 30–80 W/m²")
+    print("  and R² > 0.92 on clear-sky-normalised datasets.")
+    print("=" * 60)
