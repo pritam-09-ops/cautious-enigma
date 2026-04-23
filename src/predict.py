@@ -155,7 +155,7 @@ def print_forecast_summary(forecast_result, schedule):
 
     peak_val  = max(preds)
     peak_hour = int(preds.index(peak_val)) if isinstance(preds, list) else int(
-        __import__("numpy").argmax(preds))
+        np.argmax(preds))
     daily_kwh = sum(preds)
 
     print("\n" + "=" * 78)

@@ -236,6 +236,10 @@ def print_metrics(metrics):
     def r2_rating(v):
         return "Excellent" if v > 0.95 else ("Good" if v > 0.90 else ("Acceptable" if v > 0.80 else "Needs improvement"))
 
+    def mae_rating(v, mean_ghi=200.0):
+        pct = v / mean_ghi * 100
+        return "Excellent" if pct < 10 else ("Good" if pct < 20 else ("Acceptable" if pct < 35 else "Needs improvement"))
+
     def mape_rating(v):
         return "Excellent" if v < 5 else ("Good" if v < 10 else ("Acceptable" if v < 20 else "Needs improvement"))
 
@@ -245,7 +249,7 @@ def print_metrics(metrics):
     print(f"  {'Metric':<22} {'Value':>12}   {'Rating'}")
     print("  " + "-" * 54)
     print(f"  {'RMSE':<22} {rmse:>10.2f}   W/m²  →  {rmse_rating(rmse)}")
-    print(f"  {'MAE':<22} {mae:>10.2f}   W/m²  →  (mean abs error)")
+    print(f"  {'MAE':<22} {mae:>10.2f}   W/m²  →  {mae_rating(mae)}")
     print(f"  {'R²  (coeff. of det.)':<22} {r2:>12.4f}   {r2_rating(r2)}")
     print(f"  {'MAPE':<22} {mape:>10.2f}   %     →  {mape_rating(mape)}")
     print(f"  {'Accuracy (1−MAE/μ)':<22} {acc:>10.1f}   %")
