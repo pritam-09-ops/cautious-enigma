@@ -53,6 +53,7 @@ _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parent if _HERE.name == "src" else _HERE
 sys.path.insert(0, str(_REPO / "src"))
 
+from console_utils import enable_utf8_output
 from duck_curve_analysis import (
     analyze_duck_curve,
     predict_curtailment_strategy,
@@ -68,7 +69,10 @@ from feature_engineering import (
 # CONSTANTS
 # ═════════════════════════════════════════════════════════════════════════════
 LATITUDE         = 19.076          # IIT Bombay, Mumbai
-SOLAR_FARM_MW    = 100.0           # Installed PV capacity (MW)
+# Sized against the ~800 MW base load below to give a high-penetration
+# scenario (~43% peak instantaneous, ~10% of annual demand). A 100 MW farm
+# on this grid peaks near 10% penetration, where no duck curve is visible.
+SOLAR_FARM_MW    = 400.0           # Installed PV capacity (MW)
 PANEL_EFFICIENCY = 0.20            # 20 % panel efficiency
 INVERTER_EFF     = 0.97            # Inverter losses
 TEMP_COEFF       = -0.0045         # -0.45 %/°C above 25°C
@@ -77,8 +81,11 @@ PANEL_AREA_M2    = (SOLAR_FARM_MW * 1e6) / (1000 * PANEL_EFFICIENCY)  # m²
 # Ramp-rate thresholds are expressed as a fraction of installed capacity —
 # analyze_duck_curve()'s GHI-scale defaults (calibrated for W/m^2) would be
 # meaningless against a capacity-bounded MW power series.
-HIGH_RAMP_FRACTION    = 0.15   # 15% of capacity/hour → high-ramp event
-CURTAIL_RAMP_FRACTION = 0.10   # 10% of capacity/hour → moderate ramp
+# Calibration note: in this dataset the median day's steepest hourly PV ramp
+# is ~32% of capacity and the annual maximum is ~66%, so a "high ramp" flag
+# is set above the typical day rather than below it.
+HIGH_RAMP_FRACTION    = 0.40   # 40% of capacity/hour → high-ramp event
+CURTAIL_RAMP_FRACTION = 0.25   # 25% of capacity/hour → moderate ramp
 
 
 def _ramp_thresholds(capacity_mw):
@@ -725,13 +732,7 @@ def print_report(day: dict, all_results: list):
 # ═════════════════════════════════════════════════════════════════════════════
 
 def main():
-    # Make emoji/unicode output safe on non-UTF8 consoles (e.g. Windows cmd.exe)
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            try:
-                stream.reconfigure(encoding="utf-8", errors="replace")
-            except (ValueError, OSError):
-                pass
+    enable_utf8_output()
 
     parser = argparse.ArgumentParser(
         description="Duck Curve Simulation — cautious-enigma repo",

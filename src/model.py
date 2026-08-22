@@ -77,3 +77,57 @@ class CNNLSTMModel(nn.Module):
                 x_tensor = x_tensor.unsqueeze(0)
             output = self.forward(x_tensor)
         return output.cpu().numpy()
+
+
+class LSTMOnlyModel(nn.Module):
+    """LSTM-only baseline — ablates the CNN front-end of CNNLSTMModel."""
+
+    def __init__(self, num_features=8, lstm_hidden=64, output_size=1, dropout=0.2):
+        super().__init__()
+        self.lstm = nn.LSTM(
+            input_size=num_features,
+            hidden_size=lstm_hidden,
+            num_layers=2,
+            batch_first=True,
+            dropout=dropout,
+        )
+        self.fc = nn.Sequential(
+            nn.Linear(lstm_hidden, 32),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(32, output_size),
+        )
+
+    def forward(self, x):
+        """x: (batch, seq_len, num_features) -> (batch, output_size)"""
+        lstm_out, _ = self.lstm(x)
+        return self.fc(lstm_out[:, -1, :])
+
+
+class CNNOnlyModel(nn.Module):
+    """CNN-only baseline — ablates the LSTM temporal head of CNNLSTMModel."""
+
+    def __init__(self, num_features=8, output_size=1, dropout=0.2):
+        super().__init__()
+        self.cnn = nn.Sequential(
+            nn.Conv1d(num_features, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+        # Global average pooling over time collapses the sequence without
+        # hard-coding a sequence length into the classifier.
+        self.pool = nn.AdaptiveAvgPool1d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(32, output_size),
+        )
+
+    def forward(self, x):
+        """x: (batch, seq_len, num_features) -> (batch, output_size)"""
+        x = self.cnn(x.permute(0, 2, 1))
+        x = self.pool(x).squeeze(-1)
+        return self.fc(x)

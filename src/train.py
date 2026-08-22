@@ -7,6 +7,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
+import console_utils  # noqa: F401  (configures UTF-8 console output on import)
 from model import CNNLSTMModel
 from feature_engineering import (
     engineer_features,
@@ -48,9 +49,50 @@ def load_data(filepath):
     return df
 
 
+def prepare_data(df, sequence_length=24, test_split=0.2):
+    """
+    Feature-engineer, normalize (leak-free), and build train/test sequences.
+
+    The scaler is fit on the training portion only, then applied to the full
+    series so sequences stay contiguous. Fitting on the whole dataset first
+    would leak test-set min/max statistics into the training normalization.
+
+    Args:
+        df: DataFrame with 'timestamp' and 'ghi' columns
+        sequence_length: Sliding window length (hours)
+        test_split: Fraction of data held out for testing
+
+    Returns:
+        dict with X_train, y_train, X_test, y_test, ts_test, scaler, df_feat
+    """
+    df_feat = engineer_features(df)
+
+    split_row = int(len(df_feat) * (1 - test_split))
+    _, scaler, _ = normalize_features(df_feat.iloc[:split_row])
+    X_norm, _, _ = normalize_features(df_feat, scaler=scaler)
+
+    # Normalize target consistently with the feature scaler
+    y_norm = X_norm[:, 0]
+
+    X_seq, y_seq = create_sequences(X_norm, y_norm, seq_len=sequence_length)
+
+    # create_sequences predicts row i from rows [i-seq_len, i), so sequence j
+    # corresponds to df_feat row (sequence_length + j).
+    ts_seq = df_feat['timestamp'].values[sequence_length:]
+
+    # Train/test split (chronological)
+    split_idx = int(len(X_seq) * (1 - test_split))
+    return {
+        "X_train": X_seq[:split_idx], "y_train": y_seq[:split_idx],
+        "X_test": X_seq[split_idx:], "y_test": y_seq[split_idx:],
+        "ts_test": ts_seq[split_idx:],
+        "scaler": scaler, "df_feat": df_feat,
+    }
+
+
 def train_model(df, sequence_length=24, batch_size=32, epochs=50,
                 learning_rate=0.001, test_split=0.2, device='cpu',
-                save_path=None):
+                save_path=None, model_factory=None, verbose=True):
     """
     Full training pipeline.
 
@@ -63,35 +105,26 @@ def train_model(df, sequence_length=24, batch_size=32, epochs=50,
         test_split: Fraction of data for testing
         device: 'cpu' or 'cuda'
         save_path: Path to save model weights (None = don't save)
+        model_factory: Callable(num_features) -> nn.Module. Defaults to
+            CNNLSTMModel; used to swap in baselines for benchmarking.
+        verbose: Print per-epoch progress
 
     Returns:
-        (model, scaler, metrics_dict)
+        (model, scaler, metrics_dict, history_dict)
     """
-    print("\n   Feature engineering...")
-    df_feat = engineer_features(df)
+    if verbose:
+        print("\n   Feature engineering...")
+    data = prepare_data(df, sequence_length=sequence_length, test_split=test_split)
+    scaler = data["scaler"]
     n_features = len(FEATURE_COLUMNS)
 
-    # Fit the scaler on the training portion only, then apply it to the full
-    # series (train + test) so sequences stay contiguous. Fitting on the
-    # whole dataset first would leak test-set min/max statistics into the
-    # normalization used for training.
-    split_row = int(len(df_feat) * (1 - test_split))
-    _, scaler, _ = normalize_features(df_feat.iloc[:split_row])
-    X_norm, _, _ = normalize_features(df_feat, scaler=scaler)
+    X_train, X_test = data["X_train"], data["X_test"]
+    y_train, y_test = data["y_train"], data["y_test"]
 
-    # Normalize target consistently with the feature scaler
-    y_norm = X_norm[:, 0]
-
-    X_seq, y_seq = create_sequences(X_norm, y_norm, seq_len=sequence_length)
-
-    # Train/test split (chronological)
-    split_idx = int(len(X_seq) * (1 - test_split))
-    X_train, X_test = X_seq[:split_idx], X_seq[split_idx:]
-    y_train, y_test = y_seq[:split_idx], y_seq[split_idx:]
-
-    print(f"   ✓ Training samples : {len(X_train):,}")
-    print(f"   ✓ Test samples     : {len(X_test):,}")
-    print(f"   ✓ Feature count    : {n_features}")
+    if verbose:
+        print(f"   ✓ Training samples : {len(X_train):,}")
+        print(f"   ✓ Test samples     : {len(X_test):,}")
+        print(f"   ✓ Feature count    : {n_features}")
 
     # Build PyTorch datasets
     train_ds = TensorDataset(
@@ -106,13 +139,17 @@ def train_model(df, sequence_length=24, batch_size=32, epochs=50,
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
     # Model
-    model = CNNLSTMModel(
-        input_channels=1,
-        lstm_hidden=64,
-        output_size=1,
-        num_features=n_features,
-        dropout=0.2,
-    ).to(device)
+    if model_factory is None:
+        model = CNNLSTMModel(
+            input_channels=1,
+            lstm_hidden=64,
+            output_size=1,
+            num_features=n_features,
+            dropout=0.2,
+        )
+    else:
+        model = model_factory(n_features)
+    model = model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.MSELoss()
@@ -120,9 +157,11 @@ def train_model(df, sequence_length=24, batch_size=32, epochs=50,
         optimizer, patience=5, factor=0.5
     )
 
-    print(f"\n   Training CNN-LSTM for {epochs} epochs...")
+    if verbose:
+        print(f"\n   Training {type(model).__name__} for {epochs} epochs...")
     best_val_loss = float('inf')
     best_state = None
+    history = {"train_loss": [], "val_loss": []}
 
     for epoch in range(1, epochs + 1):
         # --- Training ---
@@ -151,11 +190,14 @@ def train_model(df, sequence_length=24, batch_size=32, epochs=50,
 
         scheduler.step(val_loss)
 
+        history["train_loss"].append(float(train_loss))
+        history["val_loss"].append(float(val_loss))
+
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_state = {k: v.clone() for k, v in model.state_dict().items()}
 
-        if epoch % 10 == 0 or epoch == 1:
+        if verbose and (epoch % 10 == 0 or epoch == 1):
             print(f"   Epoch [{epoch:3d}/{epochs}] "
                   f"Train Loss: {train_loss:.6f}  Val Loss: {val_loss:.6f}")
 
@@ -169,14 +211,20 @@ def train_model(df, sequence_length=24, batch_size=32, epochs=50,
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         torch.save(model.state_dict(), save_path)
-        print(f"\n   ✓ Model weights saved to {save_path}")
+        if verbose:
+            print(f"\n   ✓ Model weights saved to {save_path}")
 
-    return model, scaler, metrics
+    return model, scaler, metrics, history
 
 
-def evaluate_model(model, test_loader, scaler, device='cpu'):
+def evaluate_model(model, test_loader, scaler, device='cpu', return_predictions=False):
     """
     Compute evaluation metrics on the test set.
+
+    Args:
+        return_predictions: If True, also include the inverse-transformed
+            'predictions' and 'targets' arrays (W/m²) in the returned dict,
+            for residual / per-hour diagnostics.
 
     Returns:
         dict with RMSE, MAE, R², MAPE, accuracy
@@ -214,15 +262,20 @@ def evaluate_model(model, test_loader, scaler, device='cpu'):
         if mask.any() else float('nan')
     )
 
-    accuracy = max(0.0, (1.0 - mae / (targets.mean() + 1e-8)) * 100)
+    # float() guards against numpy scalars leaking into JSON export
+    accuracy = float(max(0.0, (1.0 - mae / (targets.mean() + 1e-8)) * 100))
 
-    return {
+    result = {
         "rmse": round(rmse, 2),
         "mae": round(mae, 2),
         "r2": round(r2, 4),
         "mape": round(mape, 2),
         "accuracy": round(accuracy, 1),
     }
+    if return_predictions:
+        result["predictions"] = preds
+        result["targets"] = targets
+    return result
 
 
 def print_metrics(metrics):

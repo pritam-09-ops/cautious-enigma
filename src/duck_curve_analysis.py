@@ -11,6 +11,8 @@ duplicating them.
 
 import numpy as np
 
+import console_utils  # noqa: F401  (configures UTF-8 console output on import)
+
 # Default ramp-rate thresholds, calibrated for GHI (W/m^2) input.
 # Callers working in other units (e.g. MW of PV power) should pass an
 # explicit threshold scaled to their own value range.

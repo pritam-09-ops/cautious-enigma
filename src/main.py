@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from console_utils import enable_utf8_output
 from feature_engineering import (
     engineer_features,
     normalize_features,
@@ -81,13 +82,7 @@ def generate_sample_data(filepath, n_days=365):
 
 
 def main():
-    # Make emoji/unicode output safe on non-UTF8 consoles (e.g. Windows cmd.exe)
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            try:
-                stream.reconfigure(encoding="utf-8", errors="replace")
-            except (ValueError, OSError):
-                pass
+    enable_utf8_output()
 
     parser = argparse.ArgumentParser(
         description="Solar Irradiance & PV Power Prediction — CNN-LSTM Pipeline"
@@ -164,7 +159,7 @@ def main():
     print("   ✓ LR schedule    : ReduceLROnPlateau (patience=5, factor=0.5)")
     print("   ✓ Early stopping : Best checkpoint retained via val-loss tracking")
 
-    model, scaler, metrics = train_model(
+    model, scaler, metrics, history = train_model(
         df,
         sequence_length=sequence_length,
         batch_size=batch_size,
