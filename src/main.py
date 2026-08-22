@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import torch
 
-from model import CNNLSTMModel
 from feature_engineering import (
     engineer_features,
     normalize_features,
@@ -82,6 +81,14 @@ def generate_sample_data(filepath, n_days=365):
 
 
 def main():
+    # Make emoji/unicode output safe on non-UTF8 consoles (e.g. Windows cmd.exe)
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
     parser = argparse.ArgumentParser(
         description="Solar Irradiance & PV Power Prediction — CNN-LSTM Pipeline"
     )
@@ -175,49 +182,31 @@ def main():
     print_metrics(metrics)
 
     # ------------------------------------------------------------------ #
-    # Step 6 — Duck Curve analysis                                        #
+    # Step 6 — 24-hour forecast                                           #
     # ------------------------------------------------------------------ #
-    print("\n[6/7] Duck Curve & Grid Stability Analysis...")
-
-    # Use last 24 hours of the dataset as the representative profile
+    print("\n[6/7] Generating 24-Hour Forecast...")
     X_norm, _, _ = normalize_features(df_feat, scaler=scaler)
-    last_seq = X_norm[-sequence_length:]
-    x_tensor = torch.FloatTensor(last_seq).unsqueeze(0).to(device)
-    model.eval()
-    with torch.no_grad():
-        sample_pred_norm = model(x_tensor).cpu().numpy().flatten()
+    seed_sequence = X_norm[-sequence_length:]
+    last_timestamp = df_feat['timestamp'].iloc[-1]
+    forecast = forecast_24h(
+        model, seed_sequence, scaler, last_timestamp,
+        n_steps=24, device=device, mc_samples=30,
+    )
+    schedule = build_dispatch_schedule(forecast)
+    print_forecast_summary(forecast, schedule)
 
-    # Build a toy 24-h profile from repeated inference on sliding recent data
-    representative_24h = []
-    window = X_norm[-sequence_length:].copy()
-    for _ in range(24):
-        xt = torch.FloatTensor(window).unsqueeze(0).to(device)
-        with torch.no_grad():
-            p = model(xt).cpu().numpy().flatten()[0]
-        representative_24h.append(p)
-        next_step = window[-1].copy()
-        next_step[0] = p
-        window = np.vstack([window[1:], next_step])
+    # ------------------------------------------------------------------ #
+    # Step 7 — Duck Curve analysis                                        #
+    # ------------------------------------------------------------------ #
+    print("\n[7/7] Duck Curve & Grid Stability Analysis...")
 
-    # Inverse transform
-    dummy = np.zeros((24, scaler.n_features_in_))
-    dummy[:, 0] = representative_24h
-    representative_ghi = np.maximum(scaler.inverse_transform(dummy)[:, 0], 0.0)
+    # Reuse the 24-h forecast just computed as the representative profile,
+    # instead of re-deriving a second (and separately biased) rollout.
+    representative_ghi = np.array(forecast["predictions"])
 
     analysis = analyze_duck_curve(representative_ghi)
     curtailment = predict_curtailment_strategy(analysis, representative_ghi)
     print_duck_curve_summary(analysis, curtailment)
-
-    # ------------------------------------------------------------------ #
-    # Step 7 — 24-hour forecast                                           #
-    # ------------------------------------------------------------------ #
-    print("\n[7/7] Generating 24-Hour Forecast...")
-    seed_sequence = X_norm[-sequence_length:]
-    forecast = forecast_24h(
-        model, seed_sequence, scaler, n_steps=24, device=device, mc_samples=30
-    )
-    schedule = build_dispatch_schedule(forecast)
-    print_forecast_summary(forecast, schedule)
 
     # ------------------------------------------------------------------ #
     # Summary                                                              #

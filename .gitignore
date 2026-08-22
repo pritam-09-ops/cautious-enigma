@@ -17,6 +17,9 @@ models/
 *.pt
 *.pth
 
+# Duck-curve simulation output (generated at runtime)
+/duck_curve_simulation.png
+
 # Jupyter
 .ipynb_checkpoints/
 

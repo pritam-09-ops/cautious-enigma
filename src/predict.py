@@ -3,28 +3,42 @@ import torch
 import pandas as pd
 
 from feature_engineering import (
-    engineer_features,
-    normalize_features,
-    create_sequences,
-    FEATURE_COLUMNS,
+    compute_solar_zenith_angle,
+    compute_clearness_index,
 )
 from duck_curve_analysis import analyze_duck_curve, predict_curtailment_strategy
 
 
-def forecast_24h(model, last_sequence, scaler, n_steps=24, device='cpu',
-                 mc_samples=50):
+def _inverse_ghi(norm_vals, scaler):
+    """Inverse-transform normalized GHI values (feature index 0) back to W/m²."""
+    norm_vals = np.atleast_1d(norm_vals)
+    dummy = np.zeros((len(norm_vals), scaler.n_features_in_))
+    dummy[:, 0] = norm_vals
+    return np.maximum(scaler.inverse_transform(dummy)[:, 0], 0.0)
+
+
+def forecast_24h(model, last_sequence, scaler, last_timestamp, n_steps=24,
+                 device='cpu', mc_samples=50, latitude=19.076):
     """
     Generate 24-hour ahead GHI forecasts with confidence intervals.
 
-    Uses Monte Carlo dropout for uncertainty estimation.
+    Uses Monte Carlo dropout for uncertainty estimation. At each recursive
+    step the full feature vector (not just GHI) is rebuilt for the
+    predicted hour — cyclical time encoding, solar zenith, clearness index,
+    and rolling GHI statistics — so the model actually sees the correct
+    time-of-day signal as the forecast advances instead of a frozen copy
+    of the seed window's last hour.
 
     Args:
         model: Trained CNNLSTMModel
         last_sequence: Seed sequence array of shape (seq_len, n_features)
         scaler: Fitted MinMaxScaler for inverse transform
+        last_timestamp: Timestamp of the seed sequence's final (most recent)
+            hour — forecasts start at last_timestamp + 1h.
         n_steps: Forecast horizon (default 24 hours)
         device: Torch device string
         mc_samples: Number of MC dropout passes for uncertainty
+        latitude: Observer latitude in degrees, for solar position features
 
     Returns:
         dict with 'predictions', 'lower_ci', 'upper_ci' (all W/m²)
@@ -32,20 +46,45 @@ def forecast_24h(model, last_sequence, scaler, n_steps=24, device='cpu',
     model.train()  # Keep dropout active for MC estimation
     all_preds = []
 
-    seq = last_sequence.copy()
+    last_timestamp = pd.Timestamp(last_timestamp)
+    seed_ghi_raw = list(_inverse_ghi(last_sequence[-6:, 0], scaler))
 
     for _ in range(mc_samples):
         preds_run = []
-        current_seq = seq.copy()
-        for _ in range(n_steps):
+        current_seq = last_sequence.copy()
+        ghi_hist = list(seed_ghi_raw)  # rolling raw-GHI history for this MC run
+
+        for step in range(n_steps):
             x = torch.FloatTensor(current_seq).unsqueeze(0).to(device)
             with torch.no_grad():
                 pred_norm = model(x).cpu().numpy().flatten()[0]
             preds_run.append(pred_norm)
 
-            # Build next step: shift window and append predicted GHI
-            next_step = current_seq[-1].copy()
-            next_step[0] = pred_norm  # GHI is the first feature
+            pred_raw = float(_inverse_ghi(pred_norm, scaler)[0])
+            ghi_hist.append(pred_raw)
+
+            future_time = last_timestamp + pd.Timedelta(hours=step + 1)
+            hour = future_time.hour + future_time.minute / 60.0
+            doy = future_time.dayofyear
+            hour_sin = np.sin(2 * np.pi * hour / 24.0)
+            hour_cos = np.cos(2 * np.pi * hour / 24.0)
+            zenith = compute_solar_zenith_angle(
+                pd.DatetimeIndex([future_time]), latitude=latitude
+            )[0]
+            cos_zenith = np.cos(np.radians(zenith))
+            clearness = compute_clearness_index(
+                np.array([pred_raw]), np.array([doy]), np.array([zenith])
+            )[0]
+
+            roll3 = float(np.mean(ghi_hist[-3:]))
+            roll6 = float(np.mean(ghi_hist[-6:]))
+            ghi_diff = ghi_hist[-1] - ghi_hist[-2] if len(ghi_hist) > 1 else 0.0
+
+            raw_feat_vec = np.array([[pred_raw, hour_sin, hour_cos, cos_zenith,
+                                       clearness, roll3, roll6, ghi_diff]])
+            next_step = scaler.transform(raw_feat_vec)[0]
+
+            # Build next step: shift window and append the recomputed features
             current_seq = np.vstack([current_seq[1:], next_step])
 
         all_preds.append(preds_run)
@@ -55,16 +94,9 @@ def forecast_24h(model, last_sequence, scaler, n_steps=24, device='cpu',
     mean_pred_norm = all_preds.mean(axis=0)
     std_pred_norm = all_preds.std(axis=0)
 
-    # Inverse-transform: create dummy array with correct feature count
-    def inverse_ghi(norm_vals):
-        dummy = np.zeros((len(norm_vals), scaler.n_features_in_))
-        dummy[:, 0] = norm_vals
-        inv = scaler.inverse_transform(dummy)
-        return np.maximum(inv[:, 0], 0.0)
-
-    predictions = inverse_ghi(mean_pred_norm)
-    lower_ci = inverse_ghi(np.maximum(mean_pred_norm - 1.96 * std_pred_norm, 0.0))
-    upper_ci = inverse_ghi(mean_pred_norm + 1.96 * std_pred_norm)
+    predictions = _inverse_ghi(mean_pred_norm, scaler)
+    lower_ci = _inverse_ghi(np.maximum(mean_pred_norm - 1.96 * std_pred_norm, 0.0), scaler)
+    upper_ci = _inverse_ghi(mean_pred_norm + 1.96 * std_pred_norm, scaler)
 
     model.eval()
     return {

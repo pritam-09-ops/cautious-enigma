@@ -71,10 +71,14 @@ def train_model(df, sequence_length=24, batch_size=32, epochs=50,
     df_feat = engineer_features(df)
     n_features = len(FEATURE_COLUMNS)
 
-    X_norm, scaler, _ = normalize_features(df_feat)
+    # Fit the scaler on the training portion only, then apply it to the full
+    # series (train + test) so sequences stay contiguous. Fitting on the
+    # whole dataset first would leak test-set min/max statistics into the
+    # normalization used for training.
+    split_row = int(len(df_feat) * (1 - test_split))
+    _, scaler, _ = normalize_features(df_feat.iloc[:split_row])
+    X_norm, _, _ = normalize_features(df_feat, scaler=scaler)
 
-    # GHI is the first column — use it as target
-    y = df_feat['ghi'].values.astype(float)
     # Normalize target consistently with the feature scaler
     y_norm = X_norm[:, 0]
 

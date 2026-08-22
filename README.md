@@ -46,14 +46,11 @@ pip install -r requirements.txt
 
 ## Usage
 ```bash
-# Run the complete pipeline
+# Run the complete pipeline (trains a model, forecasts, and analyzes grid stability)
 python src/main.py
 
-# Make predictions
-python src/predict.py --input data/ghi_data.csv
-
-# Analyze Duck Curve
-python src/duck_curve_analysis.py
+# Multi-day duck-curve simulation with 6-panel plot (standalone, no torch needed)
+python src/duck_curve_simulation.py --date 2025-06-15 --save plots/duck_curve.png
 ```
 
 ## Project Structure
@@ -62,12 +59,13 @@ cautious-enigma/
 ├── src/
 │   ├── main.py                  # Pipeline orchestration
 │   ├── model.py                 # CNN-LSTM architecture
-│   ├── feature_engineering.py   # Clearness Index & Zenith Angle
-│   ├── data_preprocessing.py    # Data loading & normalization
-│   ├── train.py                 # Training loop
-│   ├── evaluate.py              # Model evaluation metrics
-│   ├── duck_curve_analysis.py   # Grid stability analysis
-│   └── predict.py               # 24-hour forecasting
+│   ├── feature_engineering.py   # Clearness Index, Zenith Angle & normalization
+│   ├── train.py                 # Training loop & evaluation metrics
+│   ├── predict.py               # 24-hour forecasting with MC-dropout uncertainty
+│   ├── duck_curve_analysis.py   # Core grid-stability / ramp-rate analysis
+│   └── duck_curve_simulation.py # Multi-day PV/demand simulation & plotting
+├── data/
+│   └── sample_solar_data.csv    # Synthetic hourly GHI data (Mumbai-calibrated)
 ├── requirements.txt
 └── README.md
 ```
